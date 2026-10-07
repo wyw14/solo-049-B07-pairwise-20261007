@@ -74,6 +74,14 @@ func (m *DeadlineManager) Get(passID string) (Deadline, bool) {
 	return deadline, found
 }
 
+// Cancel removes a pass's tracked deadline so clock corrections and remaining
+// time accounting never reference a canceled pass. Idempotent.
+func (m *DeadlineManager) Cancel(passID string) {
+	m.mu.Lock()
+	delete(m.deadlines, passID)
+	m.mu.Unlock()
+}
+
 func (m *DeadlineManager) Remaining(passID string) (time.Duration, error) {
 	deadline, found := m.Get(passID)
 	if !found || deadline.MonotonicLOS.IsZero() {

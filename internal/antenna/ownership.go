@@ -77,6 +77,31 @@ func (f *Fleet) Release(antennaID, passID string, generation int64) error {
 	return f.flushLocked()
 }
 
+// ReleaseIfOwned clears antenna ownership only while the antenna is still owned
+// by the given pass. It is tolerant of a missing or generation-shifted owner:
+// if ownership is empty or belongs to another pass it is a no-op. Used by pass
+// cancellation compensation. Returns whether ownership was released.
+func (f *Fleet) ReleaseIfOwned(antennaID, passID string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	state, found := f.states[antennaID]
+	if !found {
+		return false, fmt.Errorf("antenna %s not found", antennaID)
+	}
+	if state.OwnerPassID == "" || state.OwnerPassID != passID {
+		return false, nil
+	}
+	state.OwnerPassID = ""
+	state.OwnerGeneration = 0
+	state.Mode = Idle
+	f.states[antennaID] = state
+	if err := f.flushLocked(); err != nil {
+		return false, err
+	}
+	_, _ = f.audit.Record(audit.Event{Component: "antenna", Action: "released", Subject: antennaID, Fields: map[string]any{"pass_id": passID, "cause": "pass-canceled"}})
+	return true, nil
+}
+
 func (f *Fleet) State(id string) (State, bool) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()

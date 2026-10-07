@@ -38,6 +38,9 @@ func (f *Finalizer) Finalize(ctx context.Context, passID, chainID string) (Final
 		return FinalizeResult{}, fmt.Errorf("pass %s has no recording segment", passID)
 	}
 	if err := f.passes.update(passID, func(current *Pass) error {
+		if current.Phase != Tracking {
+			return fmt.Errorf("pass cannot finalize from phase %s", current.Phase)
+		}
 		current.Phase = Draining
 		return nil
 	}); err != nil {

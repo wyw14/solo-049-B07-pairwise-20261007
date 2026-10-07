@@ -109,6 +109,11 @@ func (s *Service) ApplyAcquisitionResult(result receiver.AcquisitionResult) erro
 		_, _ = s.audit.Record(audit.Event{Component: "pass", Action: "stale-acquisition.ignored", Subject: result.PassID, Severity: audit.Warning, Fields: map[string]any{"attempt_id": result.AttemptID, "current_attempt": value.CurrentAttemptID}})
 		return nil
 	}
+	if value.Phase != Acquiring {
+		s.mu.Unlock()
+		_, _ = s.audit.Record(audit.Event{Component: "pass", Action: "late-acquisition.ignored", Subject: result.PassID, Severity: audit.Warning, Fields: map[string]any{"attempt_id": result.AttemptID, "phase": value.Phase}})
+		return nil
+	}
 	if result.Locked && result.Synced {
 		value.Phase = Tracking
 		value.DecoderEpoch = result.Epoch
@@ -168,16 +173,27 @@ func (s *Service) AcceptDiversity(passID string, results []receiver.AcquisitionR
 
 func (s *Service) Fail(passID, reason string) error {
 	return s.update(passID, func(value *Pass) error {
+		if value.Phase == Failed {
+			return nil
+		}
+		if value.Phase == Completed || value.Phase == Sealed || value.Phase == Canceled || value.Phase == Draining {
+			return fmt.Errorf("pass cannot fail from terminal/draining phase %s", value.Phase)
+		}
 		value.Phase = Failed
 		value.FailureReason = reason
 		return nil
 	})
 }
 
+// Cancel performs only the pass phase transition. Resource compensation
+// (timeline, antenna, commands, attempts, recorder) is the Canceler's job.
 func (s *Service) Cancel(passID, reason string) error {
 	return s.update(passID, func(value *Pass) error {
-		if value.Phase == Completed || value.Phase == Sealed {
-			return fmt.Errorf("completed pass cannot be canceled")
+		if value.Phase == Canceled {
+			return nil
+		}
+		if value.Phase == Completed || value.Phase == Sealed || value.Phase == Draining {
+			return fmt.Errorf("pass in phase %s cannot be canceled", value.Phase)
 		}
 		value.Phase = Canceled
 		value.FailureReason = reason

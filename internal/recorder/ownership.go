@@ -19,6 +19,9 @@ func (m *Manager) Transfer(segmentID, from, to string, expectedGeneration int64)
 	if current.segment.OwnerStation != from || current.segment.OwnerGeneration != expectedGeneration {
 		return Segment{}, fmt.Errorf("recording owner generation changed")
 	}
+	if current.segment.Status != Open {
+		return Segment{}, fmt.Errorf("recording segment %s cannot transfer in status %s", segmentID, current.segment.Status)
+	}
 	current.segment.OwnerStation = to
 	current.segment.OwnerGeneration++
 	if err := m.flushLocked(); err != nil {

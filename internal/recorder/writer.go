@@ -70,3 +70,9 @@ func (w *FrameWriter) Size(segmentID string) (int64, error) {
 	}
 	return info.Size(), nil
 }
+
+// OnDiskSize reports how many bytes of a segment have already been persisted,
+// allowing callers to verify that canceled segments kept their evidence.
+func (m *Manager) OnDiskSize(segmentID string) (int64, error) {
+	return m.writer.Size(segmentID)
+}

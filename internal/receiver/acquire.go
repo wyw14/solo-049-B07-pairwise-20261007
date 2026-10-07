@@ -80,6 +80,11 @@ func (d *AttemptDispatcher) Deliver(result AcquisitionResult) error {
 		d.mu.Unlock()
 		return nil
 	}
+	if attempt.Status != AttemptPending {
+		_, _ = d.audit.Record(audit.Event{Component: "receiver", Action: "result.ignored", Subject: result.AttemptID, Severity: audit.Warning, Fields: map[string]any{"status": attempt.Status, "error_code": result.ErrorCode}})
+		d.mu.Unlock()
+		return nil
+	}
 	if result.Locked && result.Synced {
 		attempt.Status = AttemptLocked
 		attempt.Epoch = result.Epoch
@@ -99,6 +104,31 @@ func (d *AttemptDispatcher) Deliver(result AcquisitionResult) error {
 		return fmt.Errorf("receiver result sink is not configured")
 	}
 	return sink.ApplyAcquisitionResult(result)
+}
+
+// CancelPending marks every still-pending attempt of a pass as canceled. Late
+// hardware results for those attempts are then ignored at both the dispatcher
+// and pass boundaries. It is idempotent for a canceled pass.
+func (d *AttemptDispatcher) CancelPending(passID, reason string) (int, error) {
+	if passID == "" {
+		return 0, fmt.Errorf("pass is required")
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	canceled := 0
+	for id, attempt := range d.attempts {
+		if attempt.PassID == passID && attempt.Status == AttemptPending {
+			attempt.Status = AttemptCanceled
+			attempt.ErrorCode = reason
+			attempt.FinishedAt = time.Now().UTC()
+			d.attempts[id] = attempt
+			canceled++
+		}
+	}
+	if canceled == 0 {
+		return 0, nil
+	}
+	return canceled, d.flushLocked()
 }
 
 func (d *AttemptDispatcher) Current(passID string) (Attempt, bool) {

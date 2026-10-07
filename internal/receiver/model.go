@@ -5,9 +5,10 @@ import "time"
 type AttemptStatus string
 
 const (
-	AttemptPending AttemptStatus = "pending"
-	AttemptLocked  AttemptStatus = "locked"
-	AttemptFailed  AttemptStatus = "failed"
+	AttemptPending  AttemptStatus = "pending"
+	AttemptLocked   AttemptStatus = "locked"
+	AttemptFailed   AttemptStatus = "failed"
+	AttemptCanceled AttemptStatus = "canceled"
 )
 
 type Attempt struct {

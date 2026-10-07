@@ -100,6 +100,34 @@ func (t *Timeline) Release(reservationID string) (Interval, error) {
 	return t.setStatus(reservationID, Released)
 }
 
+// ReleaseForPass releases every non-released interval held by a pass. Used by
+// pass cancellation to free the antenna window so future reservations are not
+// flagged as conflicts. Idempotent; returns the number of intervals released.
+func (t *Timeline) ReleaseForPass(passID string) (int, error) {
+	if passID == "" {
+		return 0, fmt.Errorf("pass is required")
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	released := 0
+	var firstErr error
+	for antennaID, intervals := range t.byAntenna {
+		for index := range intervals {
+			if intervals[index].PassID != passID || intervals[index].Status == Released {
+				continue
+			}
+			intervals[index].Status = Released
+			t.byAntenna[antennaID][index] = intervals[index]
+			released++
+			_, _ = t.audit.Record(audit.Event{Component: "scheduler", Action: "released", Subject: intervals[index].ReservationID, Fields: map[string]any{"pass_id": passID, "cause": "pass-canceled"}})
+		}
+	}
+	if released > 0 {
+		firstErr = t.flushLocked()
+	}
+	return released, firstErr
+}
+
 func (t *Timeline) setStatus(reservationID string, status ReservationStatus) (Interval, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()

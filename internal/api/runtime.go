@@ -45,6 +45,7 @@ type Runtime struct {
 	Deadlines        *passsvc.DeadlineManager
 	Unlocker         *receiver.Unlocker
 	Finalizer        *passsvc.Finalizer
+	Canceler         *passsvc.Canceler
 	Attempts         *receiver.AttemptDispatcher
 	RecordingState   *passsvc.RecordingState
 	Handovers        *handover.Coordinator
@@ -112,6 +113,7 @@ func NewRuntime(stateRoot string) (*Runtime, error) {
 	}
 	attempts.SetSink(passes)
 	recordingState := passsvc.NewRecordingState(passes, recorderManager)
+	canceler := passsvc.NewCanceler(passes, timeline, fleet, commands, attempts, recorderManager, deadlines, trail)
 	handovers := handover.NewCoordinator(recordingState, recorderManager, trail)
 	stower := antenna.NewStowController(fleet, trail)
 	weatherCoordinator := weather.NewCoordinator(20, rfController, stower, passes, trail)
@@ -122,7 +124,7 @@ func NewRuntime(stateRoot string) (*Runtime, error) {
 		Antennas:     fleet, Executor: antenna.NewExecutor(fleet, commands, trail), Stower: stower,
 		RF: rfController, Recorder: recorderManager, Passes: passes, WindowRecompute: windowRecompute,
 		Replanner: replanner, Extensions: extensions, Deadlines: deadlines, Unlocker: unlocker,
-		Finalizer: finalizer, Attempts: attempts, RecordingState: recordingState,
+		Finalizer: finalizer, Canceler: canceler, Attempts: attempts, RecordingState: recordingState,
 		Handovers: handovers, Weather: weatherCoordinator, receiverSessions: make(map[string]*receiver.Session),
 	}
 	ephemerides.Subscribe(replanner.ApplyRevision)

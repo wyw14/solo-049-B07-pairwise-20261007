@@ -120,6 +120,39 @@ func (m *Manager) StopForFailure(passID, attemptID, reason string) error {
 	return nil
 }
 
+// AbortForPass terminates every active recording segment of a pass because the
+// pass was canceled. Segments already Sealed or Aborted are untouched so their
+// on-disk evidence remains fixed and queryable. Frames still held only in the
+// in-memory buffer are dropped (they never reached disk); the segment is marked
+// Aborted and stops accepting new frames immediately. Returns the number of
+// segments aborted. The operation is idempotent.
+func (m *Manager) AbortForPass(passID, reason string) (int, error) {
+	if passID == "" {
+		return 0, fmt.Errorf("pass is required")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	aborted := 0
+	for _, current := range m.sessions {
+		if current.segment.PassID != passID {
+			continue
+		}
+		if current.segment.Status != Open && current.segment.Status != Draining {
+			continue
+		}
+		current.buffer = nil
+		current.segment.FramesBuffered = 0
+		current.segment.Status = Aborted
+		current.segment.SealReason = reason
+		current.segment.SealedAt = time.Now().UTC()
+		aborted++
+	}
+	if aborted == 0 {
+		return 0, nil
+	}
+	return aborted, m.flushLocked()
+}
+
 func (m *Manager) flushLocked() error {
 	values := make([]Segment, 0, len(m.sessions))
 	for _, current := range m.sessions {

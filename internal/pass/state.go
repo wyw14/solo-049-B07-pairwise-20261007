@@ -109,6 +109,11 @@ func (s *Service) ApplyAcquisitionResult(result receiver.AcquisitionResult) erro
 		_, _ = s.audit.Record(audit.Event{Component: "pass", Action: "stale-acquisition.ignored", Subject: result.PassID, Severity: audit.Warning, Fields: map[string]any{"attempt_id": result.AttemptID, "current_attempt": value.CurrentAttemptID}})
 		return nil
 	}
+	if value.Phase.Terminal() {
+		s.mu.Unlock()
+		_, _ = s.audit.Record(audit.Event{Component: "pass", Action: "stale-acquisition.ignored", Subject: result.PassID, Severity: audit.Warning, Fields: map[string]any{"attempt_id": result.AttemptID, "phase": value.Phase}})
+		return nil
+	}
 	if result.Locked && result.Synced {
 		value.Phase = Tracking
 		value.DecoderEpoch = result.Epoch

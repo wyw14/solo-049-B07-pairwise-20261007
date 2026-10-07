@@ -18,6 +18,12 @@ const (
 	Canceled  Phase = "canceled"
 )
 
+// Terminal reports whether the phase is a boundary no in-flight result may
+// move the pass back out of.
+func (p Phase) Terminal() bool {
+	return p == Sealed || p == Completed || p == Canceled
+}
+
 type Window struct {
 	AOS      time.Time `json:"aos"`
 	LOS      time.Time `json:"los"`

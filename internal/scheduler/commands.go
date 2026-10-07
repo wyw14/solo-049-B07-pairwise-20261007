@@ -68,6 +68,29 @@ func (q *CommandQueue) Replace(passID string, revision int64, commands []Pointin
 	return store.WriteJSON(q.path, q.commands)
 }
 
+// RetireForPass retires every unretired command queued for the pass and drops
+// its active revision marker, so canceled work can never become due again.
+func (q *CommandQueue) RetireForPass(passID, cause string) (int, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	retired := 0
+	for index := range q.commands {
+		if q.commands[index].PassID == passID && !q.commands[index].Retired {
+			q.commands[index].Retired = true
+			q.commands[index].RetireCause = cause
+			retired++
+		}
+	}
+	delete(q.active, passID)
+	if retired == 0 {
+		return 0, nil
+	}
+	if err := store.WriteJSON(q.path, q.commands); err != nil {
+		return 0, err
+	}
+	return retired, nil
+}
+
 func (q *CommandQueue) Due(now time.Time) []PointingCommand {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
